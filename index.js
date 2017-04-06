@@ -1,3 +1,5 @@
+"use strict";
+
 const fs = require('mz/fs');
 const path = require('path');
 const Bottleneck = require('bottleneck');
@@ -32,7 +34,7 @@ function build(opts) {
   defineDefault('jsonpBundles', true);
 
   const baseSchemaVersion = fs.readFileSync(
-    path.join(opts.baseDir,'SCHEMA_VERSION')).trim();
+    path.join(opts.baseDir,'SCHEMA_VERSION'),'utf8').trim();
 
   // We'll redo the expectation logic the next time we update the schema;
   // for now, we essentially just check if it's v0.1, so we don't
@@ -49,11 +51,19 @@ function build(opts) {
   const interpretYaml = opts.jsonSlices || opts.jsonpSlices ||
     opts.jsonBundles || opts.jsonpBundles;
 
+  function pWrapped(json, metadata) {
+    return `opws_jsonp_response(${json},${JSON.stringify(metadata)})`;
+  }
+
   const readLimiter = new Bottleneck(opts.maxConcurrentReads);
   const writeLimiter = new Bottleneck(opts.maxConcurrentReads);
 
-  function pWrapped(json, metadata) {
-    return `opws_jsonp_response(${json},${JSON.stringify(metadata)})`;
+  function readFile(name) {
+    return readLimiter.schedule(fs.readFile, name);
+  }
+
+  function writeFile(name, data) {
+    return writeLimiter.schedule(fs.writeFile, name, data);
   }
 
   function processDirectory(subdir) {
@@ -61,8 +71,7 @@ function build(opts) {
       const basename = filename.replace(/\.yaml$/,'');
       const writeOperations = [];
       function writeBuilt(extension, content) {
-        return writeOperations.push(writeLimiter.schedule(
-          fs.writeFile,
+        return writeOperations.push(writeFile(
           path.join(buildDir, subdir, basename + '.' + extension),
           content));
       }
@@ -84,72 +93,66 @@ function build(opts) {
       if (opts.yamlSlices) {
         writeBuilt('yaml', fileContent);
       }
-      return Promise.all(writeOperations).then(() => obj);
+      return Promise.all(writeOperations).then(Promise.resolve(obj));
     }
 
     return fs.readdir(path.join(opts.baseDir,subdir)).then(files =>
       Promise.all(files.map(
-        filename => readLimiter.schedule(fs.readFile,
+        filename => readFile(
           path.join(opts.baseDir, subdir, filename))
           .then(fileContent => processFile(filename, fileContent))))
       .then(resultObjs => {
         const writeOperations = [];
         const dirObj = {};
         for (let i = 0; i < files.length; ++i) {
-          dirObj[files[i]] = resultObjs[i];
+          dirObj[files[i].replace(/\.yaml$/,'')] = resultObjs[i];
         }
         const json = JSON.stringify(dirObj);
         if (opts.jsonBundles) {
-          writeOperations.push(writeLimiter.schedule(
-            fs.writeFile,
-            path.join(buildDir, subdir + '.json'),
-            json));
+          writeOperations.push(writeFile(
+            path.join(buildDir, subdir + '.json'), json));
         }
         if (opts.jsonpBundles) {
-          writeOperations.push(writeLimiter.schedule(
-            fs.writeFile,
+          writeOperations.push(writeFile(
             path.join(buildDir, subdir + '.jsonp'),
             pWrapped(json, {
               domain: opts.buildDomain,
               filename: `/${buildVersion}/${subdir}.jsonp`})));
         }
-        return Promise.all(writeOperations).then(() => dirObj);
+        return Promise.all(writeOperations).then(Promise.resolve(dirObj));
       }));
   }
 
   function buildAllDirectories(subdirs) {
-    Promise.all(subdirs.map(processDirectory)).then(resultObjs => {
+    return Promise.all(subdirs.map(processDirectory)).then(resultObjs => {
+      const writeOperations = [];
+      const bundleObj = {BUILD_TIMESTAMP: buildDateTime};
       if (opts.jsonSlices || opts.jsonpSlices) {
-        const writeOperations = [];
-        const bundleObj = {BUILD_TIMESTAMP: buildDateTime};
         for (let i = 0; i < subdirs.length; ++i) {
           bundleObj[subdirs[i]] = resultObjs[i];
         }
         const json = JSON.stringify(bundleObj);
         if (opts.jsonSlices) {
-          writeOperations.push(writeLimiter.schedule(
-            fs.writeFile,
-            path.join(buildDir, 'bundle.json'),
-            json));
+          writeOperations.push(writeFile(
+            path.join(buildDir, 'bundle.json'), json));
         }
         if (opts.jsonpSlices) {
-          writeOperations.push(writeLimiter.schedule(
-            fs.writeFile,
+          writeOperations.push(writeFile(
             path.join(buildDir, 'bundle.jsonp'),
             pWrapped(json, {
               domain: opts.buildDomain,
               filename: `/${buildVersion}/bundle.jsonp`})));
         }
-        return Promise.all(writeOperations).then(() => bundleObj);
       }
+      return Promise.all(writeOperations).then(Promise.resolve(bundleObj));
     });
   }
 
   function writeTimestampFiles() {
     Promise.all([
-      writeLimiter.schedule(fs.writeFile, 'BUILD_TIMESTAMP.txt',
+      writeFile('BUILD_TIMESTAMP.txt',
         buildDateTime),
-      writeLimiter.schedule(fs.writeFile, 'BUILD_TIMESTAMP.jsonp',
+      writeFile('BUILD_TIMESTAMP.jsonp',
         pWrapped(JSON.stringify(buildDateTime), {
           domain: opts.buildDomain,
           filename: `/${buildVersion}/BUILD_TIMESTAMP.jsonp`}))]);
