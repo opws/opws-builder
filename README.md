@@ -1,2 +1,3 @@
 # opws-builder
-Tool that compiles bundles and conversions for builds.opws.org
+
+Tool that compiles bundles and other derivative files for builds.opws.org
