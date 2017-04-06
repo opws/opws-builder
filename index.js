@@ -94,7 +94,7 @@ function build(opts) {
       if (opts.yamlSlices) {
         writeBuilt('yaml', fileContent);
       }
-      return Promise.all(writeOperations).then(Promise.resolve(obj));
+      return Promise.all(writeOperations).then(() => obj);
     }
 
     return fs.ensureDir(path.join(buildDir,subdir))
@@ -119,7 +119,7 @@ function build(opts) {
               domain: opts.buildDomain,
               filename: `/${buildVersion}/${subdir}.jsonp`})));
         }
-        return Promise.all(writeOperations).then(Promise.resolve(dirObj));
+        return Promise.all(writeOperations).then(() => dirObj);
       }));
   }
 
@@ -142,7 +142,7 @@ function build(opts) {
               filename: `/${buildVersion}/bundle.jsonp`})));
         }
       }
-      return Promise.all(writeOperations).then(Promise.resolve(bundleObj));
+      return Promise.all(writeOperations).then(() => bundleObj);
     });
   }
 
