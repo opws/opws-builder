@@ -7,5 +7,6 @@ const opwsBuilder = require('../index.js');
 opwsBuilder.build({
   outDir: process.env.OPWS_BUILD_DIR || 'build',
   buildDomain: process.env.OPWS_BUILD_DOMAIN || 'builds.opws.org',
-  expectedVersion: process.env.OPWS_EXPECTED_SCHEMA_VERSION || 'v0.1'
+  expectedVersion: process.env.OPWS_EXPECTED_SCHEMA_VERSION || 'v0.1',
+  jsonpExtension: process.env.OPWS_JSONP_EXTENSION || 'js'
 });

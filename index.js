@@ -51,8 +51,13 @@ function build(opts) {
   const interpretYaml = opts.jsonSlices || opts.jsonpSlices ||
     opts.jsonBundles || opts.jsonpBundles;
 
-  function pWrapped(json, metadata) {
-    return `opws_jsonp_response(${json},${JSON.stringify(metadata)})`;
+  const jsonpExtension = opts.jsonpExtension || 'js';
+
+  function pWrapped(json, basename) {
+    return `opws_jsonp_response(${json},${JSON.stringify({
+      domain: opts.buildDomain,
+      filename: `/${buildVersion}/${basename}.${jsonpExtension}`
+    })})`;
   }
 
   const readLimiter = new Bottleneck(opts.maxConcurrentReads);
@@ -81,10 +86,9 @@ function build(opts) {
           writeOperations.push(writeBuildFile(bundleName + '.json', json));
         }
         if (opts.jsonpSlices) {
-          writeOperations.push(writeBuildFile(bundleName + '.jsonp',
-            pWrapped(json, {
-              domain: opts.buildDomain,
-              filename: `/${buildVersion}/${bundleName}.jsonp`})));
+          writeOperations.push(writeBuildFile(
+            `${bundleName}.${jsonpExtension}`,
+            pWrapped(json, bundleName)));
         }
       }
       return Promise.all(writeOperations).then(() => bundleObj);
@@ -109,9 +113,7 @@ function build(opts) {
             makeSlice('json', json);
           }
           if (opts.jsonpSlices) {
-            makeSlice('jsonp', pWrapped(json, {
-              domain: opts.buildDomain,
-              filename: `/${buildVersion}/${subdir}/${basename}.jsonp`}));
+            makeSlice(jsonpExtension, pWrapped(json, `${subdir}/${basename}`));
           }
         }
       }
@@ -133,10 +135,8 @@ function build(opts) {
     Promise.all([
       writeBuildFile('BUILD_TIMESTAMP.txt',
         buildDateTime),
-      writeBuildFile('BUILD_TIMESTAMP.jsonp',
-        pWrapped(JSON.stringify(buildDateTime), {
-          domain: opts.buildDomain,
-          filename: `/${buildVersion}/BUILD_TIMESTAMP.jsonp`}))]);
+      writeBuildFile('BUILD_TIMESTAMP.' + jsonpExtension,
+        pWrapped(JSON.stringify(buildDateTime), 'BUILD_TIMESTAMP'))]);
   }
 
   fs.ensureDir(buildDir)
