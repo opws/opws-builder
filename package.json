@@ -18,9 +18,9 @@
   "homepage": "https://github.com/opws/opws-builder#readme",
   "dependencies": {
     "bottleneck": "^1.15.1",
-    "js-yaml": "^3.8.3",
-    "mz": "^2.6.0"
-  }
+    "fs-promise": "^2.0.2",
+    "js-yaml": "^3.8.3"
+  },
   "engines": {
     "node": "^7.0.0"
   }
