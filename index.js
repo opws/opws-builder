@@ -67,11 +67,35 @@ function build(opts) {
       path.join(buildDir, name), data);
   }
 
+  function makeBundle(bundleName, keys, valueMapFunc, etc) {
+    const bundleObj = etc.base || {};
+    const keyMapFunc = etc.keyMapFunc || (x=>x);
+    return Promise.all(keys.map(valueMapFunc)).then(values => {
+      const writeOperations = [];
+      if (opts.jsonSlices || opts.jsonpSlices) {
+        for (let i = 0; i < keys.length; ++i) {
+          bundleObj[keyMapFunc(keys[i])] = values[i];
+        }
+        const json = JSON.stringify(bundleObj);
+        if (opts.jsonSlices) {
+          writeOperations.push(writeBuildFile(bundleName + '.json', json));
+        }
+        if (opts.jsonpSlices) {
+          writeOperations.push(writeBuildFile(bundleName + '.jsonp',
+            pWrapped(json, {
+              domain: opts.buildDomain,
+              filename: `/${buildVersion}/${bundleName}.jsonp`})));
+        }
+      }
+      return Promise.all(writeOperations).then(() => bundleObj);
+    });
+  }
+
   function processDirectory(subdir) {
     function processFile(filename, fileContent) {
       const basename = filename.replace(/\.yaml$/,'');
       const writeOperations = [];
-      function writeBuilt(extension, content) {
+      function makeSlice(extension, content) {
         return writeOperations.push(writeBuildFile(
           path.join(subdir, basename + '.' + extension),
           content));
@@ -82,68 +106,27 @@ function build(opts) {
         if (opts.jsonSlices || opts.jsonpSlices) {
           const json = JSON.stringify(obj);
           if (opts.jsonSlices) {
-            writeBuilt('json', json);
+            makeSlice('json', json);
           }
           if (opts.jsonpSlices) {
-            writeBuilt('jsonp', pWrapped(json, {
+            makeSlice('jsonp', pWrapped(json, {
               domain: opts.buildDomain,
               filename: `/${buildVersion}/${subdir}/${basename}.jsonp`}));
           }
         }
       }
       if (opts.yamlSlices) {
-        writeBuilt('yaml', fileContent);
+        makeSlice('yaml', fileContent);
       }
       return Promise.all(writeOperations).then(() => obj);
     }
 
     return fs.ensureDir(path.join(buildDir,subdir))
       .then(() => fs.readdir(path.join(opts.baseDir,subdir)))
-      .then(files => Promise.all(files.map(
-        filename => readFile(
-          path.join(opts.baseDir, subdir, filename))
-          .then(fileContent => processFile(filename, fileContent))))
-      .then(resultObjs => {
-        const writeOperations = [];
-        const dirObj = {};
-        for (let i = 0; i < files.length; ++i) {
-          dirObj[files[i].replace(/\.yaml$/,'')] = resultObjs[i];
-        }
-        const json = JSON.stringify(dirObj);
-        if (opts.jsonBundles) {
-          writeOperations.push(writeBuildFile(subdir + '.json', json));
-        }
-        if (opts.jsonpBundles) {
-          writeOperations.push(writeBuildFile(subdir + '.jsonp',
-            pWrapped(json, {
-              domain: opts.buildDomain,
-              filename: `/${buildVersion}/${subdir}.jsonp`})));
-        }
-        return Promise.all(writeOperations).then(() => dirObj);
-      }));
-  }
-
-  function buildAllDirectories(subdirs) {
-    return Promise.all(subdirs.map(processDirectory)).then(resultObjs => {
-      const writeOperations = [];
-      const bundleObj = {BUILD_TIMESTAMP: buildDateTime};
-      if (opts.jsonSlices || opts.jsonpSlices) {
-        for (let i = 0; i < subdirs.length; ++i) {
-          bundleObj[subdirs[i]] = resultObjs[i];
-        }
-        const json = JSON.stringify(bundleObj);
-        if (opts.jsonSlices) {
-          writeOperations.push(writeBuildFile('bundle.json', json));
-        }
-        if (opts.jsonpSlices) {
-          writeOperations.push(writeBuildFile('bundle.jsonp',
-            pWrapped(json, {
-              domain: opts.buildDomain,
-              filename: `/${buildVersion}/bundle.jsonp`})));
-        }
-      }
-      return Promise.all(writeOperations).then(() => bundleObj);
-    });
+      .then(files => makeBundle(subdir, files, filename =>
+        readFile(path.join(opts.baseDir, subdir, filename))
+          .then(fileContent => processFile(filename, fileContent)),
+        {keyMapFunc: x => x.replace(/\.yaml$/,'')}));
   }
 
   function writeTimestampFiles() {
@@ -157,7 +140,9 @@ function build(opts) {
   }
 
   fs.ensureDir(buildDir)
-    .then(buildAllDirectories(['profiles','legacies']))
+    .then(makeBundle('bundle',
+      ['profiles','legacies'], processDirectory,
+      {base: {BUILD_TIMESTAMP: buildDateTime}}))
     .then(writeTimestampFiles);
 }
 
