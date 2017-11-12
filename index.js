@@ -55,8 +55,8 @@ function build(opts) {
 
   function pWrapped(json, basename) {
     return `opws_jsonp_response(${json},${JSON.stringify({
-      domain: opts.buildDomain,
-      filename: `/${buildVersion}/${basename}.${jsonpExtension}`
+      hostname: opts.buildDomain,
+      pathname: `/${buildVersion}/${basename}.${jsonpExtension}`
     })})`;
   }
 
